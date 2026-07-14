@@ -1,6 +1,57 @@
-from typing import Literal, Optional
+import re
+from typing import Any, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def parse_company_size(value: Any) -> Optional[int]:
+    """
+    Normalize company_size from /enrich (or callers) into a single int estimate.
+
+    Accepts:
+      - None / "" → None
+      - int → as-is
+      - "15" → 15
+      - "10-20" / "10 – 20" → midpoint (15)
+      - "50+" → 50
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError("company_size must be an integer or range string, not a boolean")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+
+    if not isinstance(value, str):
+        raise ValueError(f"Unsupported company_size type: {type(value).__name__}")
+
+    text = value.strip().lower().replace(",", "")
+    text = re.sub(r"\s*(employees?|people|staff)\s*$", "", text).strip()
+    if not text:
+        return None
+
+    range_match = re.fullmatch(r"(\d+)\s*[-–—]\s*(\d+)", text)
+    if range_match:
+        low = int(range_match.group(1))
+        high = int(range_match.group(2))
+        if high < low:
+            low, high = high, low
+        return (low + high) // 2
+
+    plus_match = re.fullmatch(r"(\d+)\s*\+", text)
+    if plus_match:
+        return int(plus_match.group(1))
+
+    plain_match = re.fullmatch(r"(\d+)", text)
+    if plain_match:
+        return int(plain_match.group(1))
+
+    raise ValueError(
+        f"Unrecognized company_size {value!r}. "
+        "Use an integer or a range like '10-20'."
+    )
 
 
 class LeadData(BaseModel):
@@ -9,13 +60,21 @@ class LeadData(BaseModel):
     name: str
     company: str
     title: Optional[str] = None
-    company_size: Optional[int] = None
+    company_size: Optional[Union[int, str]] = Field(
+        None,
+        description="Employee count as an int, or a range string like '10-20' (parsed to midpoint)",
+    )
     industry: Optional[str] = None
     linkedin_active_recently: Optional[bool] = None
     estimated_monthly_leads: Optional[int] = None
     has_dedicated_sales_role: Optional[bool] = None
     recent_signal: Optional[str] = None
     location: Optional[str] = None
+
+    @field_validator("company_size", mode="before")
+    @classmethod
+    def coerce_company_size(cls, value: Any) -> Optional[int]:
+        return parse_company_size(value)
 
 
 class LeadScoreResult(BaseModel):
@@ -35,7 +94,10 @@ class DraftRequest(BaseModel):
     name: str
     company: str
     title: Optional[str] = None
-    company_size: Optional[int] = None
+    company_size: Optional[Union[int, str]] = Field(
+        None,
+        description="Employee count as an int, or a range string like '10-20' (parsed to midpoint)",
+    )
     industry: Optional[str] = None
     linkedin_active_recently: Optional[bool] = None
     estimated_monthly_leads: Optional[int] = None
@@ -45,6 +107,11 @@ class DraftRequest(BaseModel):
     score: int = Field(..., ge=1, le=10)
     confidence: Literal["low", "medium", "high"]
     reason: str
+
+    @field_validator("company_size", mode="before")
+    @classmethod
+    def coerce_company_size(cls, value: Any) -> Optional[int]:
+        return parse_company_size(value)
 
 
 class DraftResult(BaseModel):
