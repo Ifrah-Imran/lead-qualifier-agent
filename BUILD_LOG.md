@@ -23,3 +23,6 @@
 - Learned Git needs a configured name/email before committing
   (git config --global).
 - Made first commit and pushed to GitHub successfully.
+
+## Day 2
+Built real /score logic using OpenAI structured outputs. Tested 3 cases (good/borderline/bad fit) — scores came back 10/7/1 respectively, with confidence correctly dropping to medium when lead data had unknowns. Confirms scoring discriminates properly
