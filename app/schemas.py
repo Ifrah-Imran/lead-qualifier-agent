@@ -81,3 +81,32 @@ class EnrichResult(BaseModel):
         default_factory=list,
         description="URLs that were successfully fetched",
     )
+
+
+class LogRequest(BaseModel):
+    """Full lead + score + draft payload to persist in Postgres."""
+
+    name: str
+    company: str
+    title: Optional[str] = None
+    company_size: Optional[str] = None
+    industry: Optional[str] = None
+    linkedin_active_recently: Optional[bool] = None
+    estimated_monthly_leads: Optional[int] = None
+    has_dedicated_sales_role: Optional[bool] = None
+    recent_signal: Optional[str] = None
+    location: Optional[str] = None
+    score: int = Field(..., ge=1, le=10)
+    confidence: Literal["low", "medium", "high"]
+    reason: str
+    drafted_message: Optional[str] = None
+    status: str = "New"
+
+
+class LogResult(BaseModel):
+    """Confirmation after a lead is written to the database."""
+
+    logged: bool
+    id: int
+    status: str
+    message: str

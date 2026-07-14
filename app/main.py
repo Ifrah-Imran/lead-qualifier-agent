@@ -4,11 +4,27 @@ from fastapi import FastAPI, HTTPException
 from openai import OpenAI
 
 from app.config import OPENAI_API_KEY
+from app.db import ensure_leads_table, insert_lead
 from app.icp import ICP
-from app.schemas import DraftRequest, DraftResult, EnrichRequest, EnrichResult, LeadData, LeadScoreResult
+from app.schemas import (
+    DraftRequest,
+    DraftResult,
+    EnrichRequest,
+    EnrichResult,
+    LeadData,
+    LeadScoreResult,
+    LogRequest,
+    LogResult,
+)
 from app.scrape import gather_company_text
 
 app = FastAPI(title="Lead Qualifier Agent")
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    ensure_leads_table()
+
 
 OUTREACH_SCORE_THRESHOLD = 6
 MIN_ENRICH_TEXT_CHARS = 200
@@ -301,10 +317,38 @@ def draft(payload: DraftRequest) -> DraftResult:
     return DraftResult(drafted=True, message=drafted_message)
 
 
-@app.post("/log")
-def log():
-    return {
-        "status": "placeholder",
-        "message": "Activity logging endpoint stub",
-        "logged": False,
-    }
+@app.post("/log", response_model=LogResult)
+def log(payload: LogRequest) -> LogResult:
+    # Idempotent — safe if startup already created the table.
+    ensure_leads_table()
+
+    try:
+        row = insert_lead(
+            {
+                "name": payload.name,
+                "company": payload.company,
+                "title": payload.title,
+                "company_size": payload.company_size,
+                "industry": payload.industry,
+                "linkedin_active_recently": payload.linkedin_active_recently,
+                "estimated_monthly_leads": payload.estimated_monthly_leads,
+                "has_dedicated_sales_role": payload.has_dedicated_sales_role,
+                "recent_signal": payload.recent_signal,
+                "location": payload.location,
+                "score": payload.score,
+                "confidence": payload.confidence,
+                "reason": payload.reason,
+                "drafted_message": payload.drafted_message,
+                "status": payload.status or "New",
+            }
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to log lead: {exc}") from exc
+
+    return LogResult(
+        logged=True,
+        id=row["id"],
+        status=row["status"],
+        message=f"Lead saved with id={row['id']}",
+    )
+
