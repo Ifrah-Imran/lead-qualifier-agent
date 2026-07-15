@@ -62,7 +62,8 @@ class LeadData(BaseModel):
     title: Optional[str] = None
     company_size: Optional[Union[int, str]] = Field(
         None,
-        description="Employee count as an int, or a range string like '10-20' (parsed to midpoint)",
+        description="Employee count as an int, or a range string like '10-20'. "
+        "/score parses ranges to a midpoint before the scoring prompt.",
     )
     industry: Optional[str] = None
     linkedin_active_recently: Optional[bool] = None
@@ -70,11 +71,6 @@ class LeadData(BaseModel):
     has_dedicated_sales_role: Optional[bool] = None
     recent_signal: Optional[str] = None
     location: Optional[str] = None
-
-    @field_validator("company_size", mode="before")
-    @classmethod
-    def coerce_company_size(cls, value: Any) -> Optional[int]:
-        return parse_company_size(value)
 
 
 class LeadScoreResult(BaseModel):

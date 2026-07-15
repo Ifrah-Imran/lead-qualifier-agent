@@ -15,6 +15,7 @@ from app.schemas import (
     LeadScoreResult,
     LogRequest,
     LogResult,
+    parse_company_size,
 )
 from app.scrape import gather_company_text
 
@@ -165,6 +166,15 @@ def score(lead: LeadData) -> LeadScoreResult:
     if not OPENAI_API_KEY:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not set")
 
+    # /enrich may send company_size as "10-20"; convert ranges to midpoint before prompting.
+    try:
+        estimated_company_size = parse_company_size(lead.company_size)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    lead_for_prompt = lead.model_dump()
+    lead_for_prompt["company_size"] = estimated_company_size
+
     client = OpenAI(api_key=OPENAI_API_KEY)
 
     # Structured outputs via forced function calling + JSON schema.
@@ -211,13 +221,14 @@ def score(lead: LeadData) -> LeadScoreResult:
                 "content": (
                     "Score this enriched lead against the ICP. "
                     "Null fields are unknown — do not guess them.\n\n"
-                    f"{lead.model_dump_json(indent=2)}"
+                    f"{json.dumps(lead_for_prompt, indent=2)}"
                 ),
             },
         ],
         tools=tools,
         tool_choice={"type": "function", "function": {"name": "return_lead_score"}},
     )
+
 
     message = response.choices[0].message
     if not message.tool_calls:
