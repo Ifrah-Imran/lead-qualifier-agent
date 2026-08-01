@@ -4,8 +4,19 @@ from fastapi import FastAPI, HTTPException
 from openai import OpenAI
 
 from app.config import OPENAI_API_KEY
-from app.db import ensure_leads_table, insert_lead
+from app.db import (
+    company_drafted_recently,
+    ensure_leads_table,
+    insert_lead,
+    record_draft_attempt,
+)
+from app.errors import chroma_http_error, openai_http_error
 from app.icp import ICP
+from app.memory import (
+    format_examples_for_prompt,
+    retrieve_similar_examples,
+    store_lead_example,
+)
 from app.schemas import (
     DraftRequest,
     DraftResult,
@@ -29,6 +40,7 @@ def on_startup() -> None:
 
 OUTREACH_SCORE_THRESHOLD = 6
 MIN_ENRICH_TEXT_CHARS = 200
+DRAFT_RATE_LIMIT_HOURS = 24
 
 SCORE_SYSTEM_PROMPT = f"""
 You are a lead qualification scorer for a B2B SaaS product.
@@ -42,6 +54,7 @@ Rules:
 - Still return a score 1-10 based only on what is known.
 - confidence must be exactly one of: low, medium, high.
 - reason must be exactly one sentence.
+- If similar past examples are provided, use them as calibration (similar leads should get similar scores) but still judge this lead on its own merits.
 """.strip()
 
 DRAFT_SYSTEM_PROMPT = """
@@ -54,6 +67,7 @@ Rules:
 - Keep it to 2–4 short sentences. No subject line. No signature block.
 - End with one low-friction question or soft CTA.
 - Do not be generic ("Congrats on all the success", "I help companies like yours grow").
+- If similar past drafts are provided, match their specificity and tone — do not copy them verbatim.
 """.strip()
 
 ENRICH_SYSTEM_PROMPT = """
@@ -68,6 +82,13 @@ Rules:
 """.strip()
 
 
+def _retrieve_examples_or_raise(lead: dict) -> list:
+    try:
+        return retrieve_similar_examples(lead)
+    except Exception as exc:
+        raise chroma_http_error(exc) from exc
+
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
@@ -77,7 +98,6 @@ def health_check():
 def enrich(payload: EnrichRequest) -> EnrichResult:
     combined_text, source_urls = gather_company_text(payload.website_url)
 
-    # No usable pages / almost no text → return nulls, do not call OpenAI.
     if not source_urls or len(combined_text.strip()) < MIN_ENRICH_TEXT_CHARS:
         return EnrichResult(
             company_name=payload.company_name,
@@ -92,7 +112,6 @@ def enrich(payload: EnrichRequest) -> EnrichResult:
 
     client = OpenAI(api_key=OPENAI_API_KEY)
 
-    # nullable fields need type: ["string", "null"] under strict structured outputs
     tools = [
         {
             "type": "function",
@@ -119,26 +138,29 @@ def enrich(payload: EnrichRequest) -> EnrichResult:
         }
     ]
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": ENRICH_SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": (
-                    f"Company name (for context only — do not invent facts from it): "
-                    f"{payload.company_name}\n\n"
-                    "Website text gathered from the pages below. "
-                    "Estimate company_size and industry only if clearly supported; "
-                    "otherwise return null for that field.\n\n"
-                    f"Pages fetched:\n{json.dumps(source_urls, indent=2)}\n\n"
-                    f"Combined text:\n{combined_text}"
-                ),
-            },
-        ],
-        tools=tools,
-        tool_choice={"type": "function", "function": {"name": "return_company_enrichment"}},
-    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": ENRICH_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Company name (for context only — do not invent facts from it): "
+                        f"{payload.company_name}\n\n"
+                        "Website text gathered from the pages below. "
+                        "Estimate company_size and industry only if clearly supported; "
+                        "otherwise return null for that field.\n\n"
+                        f"Pages fetched:\n{json.dumps(source_urls, indent=2)}\n\n"
+                        f"Combined text:\n{combined_text}"
+                    ),
+                },
+            ],
+            tools=tools,
+            tool_choice={"type": "function", "function": {"name": "return_company_enrichment"}},
+        )
+    except Exception as exc:
+        raise openai_http_error(exc) from exc
 
     message = response.choices[0].message
     if not message.tool_calls:
@@ -166,7 +188,6 @@ def score(lead: LeadData) -> LeadScoreResult:
     if not OPENAI_API_KEY:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not set")
 
-    # /enrich may send company_size as "10-20"; convert ranges to midpoint before prompting.
     try:
         estimated_company_size = parse_company_size(lead.company_size)
     except ValueError as exc:
@@ -175,10 +196,11 @@ def score(lead: LeadData) -> LeadScoreResult:
     lead_for_prompt = lead.model_dump()
     lead_for_prompt["company_size"] = estimated_company_size
 
+    similar = _retrieve_examples_or_raise(lead_for_prompt)
+    examples_block = format_examples_for_prompt(similar)
+
     client = OpenAI(api_key=OPENAI_API_KEY)
 
-    # Structured outputs via forced function calling + JSON schema.
-    # OpenAI must call this tool, and the arguments must match the schema exactly.
     tools = [
         {
             "type": "function",
@@ -212,23 +234,26 @@ def score(lead: LeadData) -> LeadScoreResult:
         }
     ]
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": SCORE_SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": (
-                    "Score this enriched lead against the ICP. "
-                    "Null fields are unknown — do not guess them.\n\n"
-                    f"{json.dumps(lead_for_prompt, indent=2)}"
-                ),
-            },
-        ],
-        tools=tools,
-        tool_choice={"type": "function", "function": {"name": "return_lead_score"}},
-    )
-
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": SCORE_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": (
+                        "Score this enriched lead against the ICP. "
+                        "Null fields are unknown — do not guess them.\n\n"
+                        f"Lead to score:\n{json.dumps(lead_for_prompt, indent=2)}\n\n"
+                        f"Similar past examples (for calibration):\n{examples_block}"
+                    ),
+                },
+            ],
+            tools=tools,
+            tool_choice={"type": "function", "function": {"name": "return_lead_score"}},
+        )
+    except Exception as exc:
+        raise openai_http_error(exc) from exc
 
     message = response.choices[0].message
     if not message.tool_calls:
@@ -243,7 +268,6 @@ def score(lead: LeadData) -> LeadScoreResult:
 
 @app.post("/draft", response_model=DraftResult)
 def draft(payload: DraftRequest) -> DraftResult:
-    # Gate before calling OpenAI — low scores never get a draft written.
     if payload.score < OUTREACH_SCORE_THRESHOLD:
         return DraftResult(
             drafted=False,
@@ -252,6 +276,18 @@ def draft(payload: DraftRequest) -> DraftResult:
                 f"(score {payload.score}/10; need {OUTREACH_SCORE_THRESHOLD}+)."
             ),
         )
+
+    try:
+        if company_drafted_recently(payload.company):
+            return DraftResult(
+                drafted=False,
+                message=(
+                    f"A draft for {payload.company} was already created within the last "
+                    f"{DRAFT_RATE_LIMIT_HOURS} hours. Try again later."
+                ),
+            )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Rate limit check failed: {exc}") from exc
 
     if not OPENAI_API_KEY:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not set")
@@ -298,22 +334,29 @@ def draft(payload: DraftRequest) -> DraftResult:
         }
     )
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": DRAFT_SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": (
-                    "Draft a first-touch outreach message for this qualified lead. "
-                    "Use only facts present below; null means unknown.\n\n"
-                    f"{json.dumps(lead_context, indent=2)}"
-                ),
-            },
-        ],
-        tools=tools,
-        tool_choice={"type": "function", "function": {"name": "return_outreach_draft"}},
-    )
+    similar = _retrieve_examples_or_raise(lead_context)
+    examples_block = format_examples_for_prompt(similar)
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": DRAFT_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": (
+                        "Draft a first-touch outreach message for this qualified lead. "
+                        "Use only facts present below; null means unknown.\n\n"
+                        f"Lead to draft for:\n{json.dumps(lead_context, indent=2)}\n\n"
+                        f"Similar past examples (for tone/specificity — do not copy):\n{examples_block}"
+                    ),
+                },
+            ],
+            tools=tools,
+            tool_choice={"type": "function", "function": {"name": "return_outreach_draft"}},
+        )
+    except Exception as exc:
+        raise openai_http_error(exc) from exc
 
     message = response.choices[0].message
     if not message.tool_calls:
@@ -325,12 +368,16 @@ def draft(payload: DraftRequest) -> DraftResult:
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Invalid draft payload from OpenAI: {exc}") from exc
 
+    try:
+        record_draft_attempt(payload.company)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to record draft attempt: {exc}") from exc
+
     return DraftResult(drafted=True, message=drafted_message)
 
 
 @app.post("/log", response_model=LogResult)
 def log(payload: LogRequest) -> LogResult:
-    # Idempotent — safe if startup already created the table.
     ensure_leads_table()
 
     try:
@@ -356,10 +403,32 @@ def log(payload: LogRequest) -> LogResult:
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to log lead: {exc}") from exc
 
+    try:
+        store_lead_example(
+            lead={
+                "name": payload.name,
+                "company": payload.company,
+                "title": payload.title,
+                "company_size": payload.company_size,
+                "industry": payload.industry,
+                "linkedin_active_recently": payload.linkedin_active_recently,
+                "estimated_monthly_leads": payload.estimated_monthly_leads,
+                "has_dedicated_sales_role": payload.has_dedicated_sales_role,
+                "recent_signal": payload.recent_signal,
+                "location": payload.location,
+            },
+            score=payload.score,
+            confidence=payload.confidence,
+            reason=payload.reason,
+            drafted_message=payload.drafted_message,
+            example_id=str(row["id"]),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"ChromaDB store failed: {exc}") from exc
+
     return LogResult(
         logged=True,
         id=row["id"],
         status=row["status"],
         message=f"Lead saved with id={row['id']}",
     )
-

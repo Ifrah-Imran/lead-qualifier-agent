@@ -15,6 +15,16 @@ services:
       timeout: 5s
       retries: 5
 
+  chroma:
+    image: chromadb/chroma:0.5.23
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+
   api:
     build: .
     ports:
@@ -23,11 +33,15 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      CHROMA_HOST: chroma
+      CHROMA_PORT: 8000
     volumes:
       - ./app:/app/app
     depends_on:
       db:
         condition: service_healthy
+      chroma:
+        condition: service_started
 
   n8n:
     image: n8nio/n8n:latest
@@ -47,3 +61,4 @@ services:
 volumes:
   postgres_data:
   n8n_data:
+  chroma_data:

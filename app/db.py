@@ -67,10 +67,47 @@ RETURNING id, status, created_at;
 """
 
 
+CREATE_DRAFT_ATTEMPTS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS draft_attempts (
+    id SERIAL PRIMARY KEY,
+    company TEXT NOT NULL,
+    drafted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_draft_attempts_company_time
+    ON draft_attempts (lower(trim(company)), drafted_at DESC);
+"""
+
+CHECK_RECENT_DRAFT_SQL = """
+SELECT 1
+FROM draft_attempts
+WHERE lower(trim(company)) = lower(trim(:company))
+  AND drafted_at > NOW() - INTERVAL '24 hours'
+LIMIT 1;
+"""
+
+INSERT_DRAFT_ATTEMPT_SQL = """
+INSERT INTO draft_attempts (company) VALUES (:company);
+"""
+
+
 def ensure_leads_table() -> None:
-    """Create the leads table if it does not already exist."""
+    """Create application tables if they do not already exist."""
     with engine.begin() as conn:
         conn.execute(text(CREATE_LEADS_TABLE_SQL))
+        conn.execute(text(CREATE_DRAFT_ATTEMPTS_TABLE_SQL))
+
+
+def company_drafted_recently(company: str) -> bool:
+    """True if this company received a draft within the last 24 hours."""
+    with engine.connect() as conn:
+        row = conn.execute(text(CHECK_RECENT_DRAFT_SQL), {"company": company}).first()
+        return row is not None
+
+
+def record_draft_attempt(company: str) -> None:
+    """Record a successful outreach draft for rate limiting."""
+    with engine.begin() as conn:
+        conn.execute(text(INSERT_DRAFT_ATTEMPT_SQL), {"company": company.strip()})
 
 
 def insert_lead(values: dict) -> dict:
