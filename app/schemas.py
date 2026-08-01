@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from typing import Any, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator
@@ -164,6 +165,34 @@ class LogRequest(BaseModel):
     reason: str
     drafted_message: Optional[str] = None
     status: str = "New"
+
+
+class Lead(BaseModel):
+    """A full leads-table row, as returned by GET /leads."""
+
+    id: int
+    name: str
+    company: str
+    title: Optional[str] = None
+    company_size: Optional[str] = None
+    industry: Optional[str] = None
+    linkedin_active_recently: Optional[bool] = None
+    estimated_monthly_leads: Optional[int] = None
+    has_dedicated_sales_role: Optional[bool] = None
+    recent_signal: Optional[str] = None
+    location: Optional[str] = None
+    score: Optional[int] = None
+    confidence: Optional[str] = None
+    reason: Optional[str] = None
+    drafted_message: Optional[str] = None
+    status: str
+    created_at: datetime
+
+
+class UpdateStatusRequest(BaseModel):
+    """Body for PATCH /leads/{id}/status."""
+
+    status: Literal["Approved", "Rejected"]
 
 
 class LogResult(BaseModel):

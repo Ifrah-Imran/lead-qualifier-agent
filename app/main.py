@@ -1,6 +1,7 @@
 import json
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 
 from app.config import OPENAI_API_KEY
@@ -8,7 +9,9 @@ from app.db import (
     company_drafted_recently,
     ensure_leads_table,
     insert_lead,
+    list_leads,
     record_draft_attempt,
+    update_lead_status,
 )
 from app.errors import chroma_http_error, openai_http_error
 from app.icp import ICP
@@ -22,15 +25,24 @@ from app.schemas import (
     DraftResult,
     EnrichRequest,
     EnrichResult,
+    Lead,
     LeadData,
     LeadScoreResult,
     LogRequest,
     LogResult,
+    UpdateStatusRequest,
     parse_company_size,
 )
 from app.scrape import gather_company_text
 
 app = FastAPI(title="Lead Qualifier Agent")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")
@@ -432,3 +444,24 @@ def log(payload: LogRequest) -> LogResult:
         status=row["status"],
         message=f"Lead saved with id={row['id']}",
     )
+
+
+@app.get("/leads", response_model=list[Lead])
+def get_leads() -> list[Lead]:
+    try:
+        return list_leads()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch leads: {exc}") from exc
+
+
+@app.patch("/leads/{lead_id}/status", response_model=Lead)
+def patch_lead_status(lead_id: int, payload: UpdateStatusRequest) -> Lead:
+    try:
+        row = update_lead_status(lead_id, payload.status)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to update lead status: {exc}") from exc
+
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Lead {lead_id} not found")
+
+    return row

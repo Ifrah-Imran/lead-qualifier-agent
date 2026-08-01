@@ -67,6 +67,20 @@ RETURNING id, status, created_at;
 """
 
 
+LIST_LEADS_SQL = """
+SELECT *
+FROM leads
+ORDER BY created_at DESC;
+"""
+
+UPDATE_LEAD_STATUS_SQL = """
+UPDATE leads
+SET status = :status
+WHERE id = :id
+RETURNING *;
+"""
+
+
 CREATE_DRAFT_ATTEMPTS_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS draft_attempts (
     id SERIAL PRIMARY KEY,
@@ -115,3 +129,17 @@ def insert_lead(values: dict) -> dict:
     with engine.begin() as conn:
         row = conn.execute(text(INSERT_LEAD_SQL), values).mappings().one()
         return dict(row)
+
+
+def list_leads() -> list[dict]:
+    """Return all leads, most recently created first."""
+    with engine.connect() as conn:
+        rows = conn.execute(text(LIST_LEADS_SQL)).mappings().all()
+        return [dict(row) for row in rows]
+
+
+def update_lead_status(lead_id: int, status: str) -> dict | None:
+    """Update a lead's status and return the updated row, or None if it doesn't exist."""
+    with engine.begin() as conn:
+        row = conn.execute(text(UPDATE_LEAD_STATUS_SQL), {"id": lead_id, "status": status}).mappings().first()
+        return dict(row) if row else None
