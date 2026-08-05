@@ -88,6 +88,14 @@ You extract company facts from website page text for lead enrichment.
 Rules:
 - Use ONLY evidence present in the provided text. Do not use outside knowledge about the brand.
 - company_size should be an employee-count range string when evidenced (e.g. "1-10", "10-20", "50-100").
+- Only extract company_size from language that specifically and clearly refers to the
+  size of the company's own team, staff, or employee count — e.g. "our team of 12",
+  "we're a 5-person company", "50 employees", "growing team of 20+".
+- Do NOT use numbers that refer to users, customers, clients, downloads, installs,
+  followers, revenue, funding, or any other metric that is not explicitly a count of
+  people employed by or working at the company.
+- If it is ambiguous whether a number refers to headcount versus some other metric
+  (e.g. users, customers), return null for company_size rather than guessing.
 - industry should be a short category when evidenced (e.g. "B2B SaaS", "fintech", "HR software").
 - If the text does not clearly support a field, return null for that field.
 - Never guess from the company name alone.

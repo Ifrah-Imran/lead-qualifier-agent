@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
 
 PAGE_TIMEOUT_SECONDS = 5
 MAX_EXTRA_PAGES = 2
@@ -14,10 +17,16 @@ MAX_TEXT_CHARS = 12_000
 
 LINK_KEYWORDS = ("about", "team", "company", "careers", "contact")
 
-_USER_AGENT = (
-    "Mozilla/5.0 (compatible; LeadQualifierBot/1.0; +https://localhost) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-)
+# A UA string alone isn't enough for some bot-protection (e.g. Cloudflare) —
+# it also checks for the Accept/Accept-Language headers a real browser sends.
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 
 
 def normalize_url(url: str) -> str:
@@ -35,12 +44,17 @@ def fetch_html(url: str) -> Optional[str]:
         response = requests.get(
             url,
             timeout=PAGE_TIMEOUT_SECONDS,
-            headers={"User-Agent": _USER_AGENT},
+            headers=_HEADERS,
             allow_redirects=True,
         )
         response.raise_for_status()
         return response.text
-    except (requests.RequestException, ValueError):
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else "unknown"
+        logger.warning("fetch_html: %s returned HTTP %s", url, status)
+        return None
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("fetch_html: %s failed — %s: %s", url, type(exc).__name__, exc)
         return None
 
 
