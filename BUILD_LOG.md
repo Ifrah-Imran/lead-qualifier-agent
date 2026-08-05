@@ -66,3 +66,15 @@ Built real /score logic using OpenAI structured outputs. Tested 3 cases (good/bo
 - Still to fix properly: move the company_size type handling into the
   actual Python code (/score's schema) instead of n8n expressions, so
   it's robust regardless of what's calling it.
+
+  ## Fixed real enrichment bug - false employee count
+- /enrich returned "10001-50000" employees for SmoothLedger (a tiny 2025
+  startup) - LLM was likely confusing a user/customer count on the page
+  with employee headcount.
+- Fixed by making ENRICH_SYSTEM_PROMPT explicit: only extract company_size
+  from language clearly about team/staff/employees, never from user/
+  customer/revenue numbers. Ambiguous cases now return null instead of
+  guessing.
+- This was caught by manually reviewing real output critically, not by
+  automated tests - a reminder that automated tests don't catch every
+  real-world failure mode.
