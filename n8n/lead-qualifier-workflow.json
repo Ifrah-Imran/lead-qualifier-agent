@@ -1,0 +1,100 @@
+[
+  {
+    "id": "vhAE8IJ4TsF2nsmS",
+    "name": "Lead Qualifier Pipeline",
+    "active": true,
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "new-lead",
+          "responseMode": "lastNode",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [-432, -80],
+        "id": "743de019-0cef-4b2d-ae68-b0295d2eee87",
+        "name": "New Lead Webhook",
+        "webhookId": "f5c26ef0-4c65-4d66-a77b-4935d7d6c282"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://api:8000/enrich",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"company_name\": \"{{ $json.body.company }}\",\n  \"website_url\": \"{{ $json.body.website_url }}\"\n}",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [-224, -80],
+        "id": "b94f54d6-4c49-4ca6-a7b4-83ce6373d2fc",
+        "name": "enrich"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "=http://api:8000/score",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"name\": \"{{ $node['New Lead Webhook'].json.body.name }}\",\n  \"company\": \"{{ $json.company_name }}\",\n  \"title\": {{ JSON.stringify($node['New Lead Webhook'].json.body.title ?? null) }},\n  \"company_size\": \"{{ $node['enrich'].json.company_size }}\",\n  \"industry\": \"{{ $json.industry }}\",\n  \"linkedin_active_recently\": {{ JSON.stringify($node['New Lead Webhook'].json.body.linkedin_active_recently ?? null) }},\n  \"estimated_monthly_leads\": {{ JSON.stringify($node['New Lead Webhook'].json.body.estimated_monthly_leads ?? null) }},\n  \"has_dedicated_sales_role\": {{ JSON.stringify($node['New Lead Webhook'].json.body.has_dedicated_sales_role ?? null) }},\n  \"recent_signal\": {{ JSON.stringify($node['New Lead Webhook'].json.body.recent_signal ?? null) }},\n  \"location\": {{ JSON.stringify($node['New Lead Webhook'].json.body.location ?? null) }}\n}",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [-16, -80],
+        "id": "b18b6a00-edef-4a9d-bcc2-c15098615099",
+        "name": "score"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://api:8000/draft",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"name\": \"{{ $node['New Lead Webhook'].json.body.name }}\",\n  \"company\": \"{{ $node['enrich'].json.company_name }}\",\n  \"title\": {{ JSON.stringify($node['New Lead Webhook'].json.body.title ?? null) }},\n  \"company_size\": \"{{ $node['enrich'].json.company_size }}\",\n  \"industry\": \"{{ $node['enrich'].json.industry }}\",\n  \"linkedin_active_recently\": {{ JSON.stringify($node['New Lead Webhook'].json.body.linkedin_active_recently ?? null) }},\n  \"estimated_monthly_leads\": {{ JSON.stringify($node['New Lead Webhook'].json.body.estimated_monthly_leads ?? null) }},\n  \"has_dedicated_sales_role\": {{ JSON.stringify($node['New Lead Webhook'].json.body.has_dedicated_sales_role ?? null) }},\n  \"recent_signal\": {{ JSON.stringify($node['New Lead Webhook'].json.body.recent_signal ?? null) }},\n  \"location\": {{ JSON.stringify($node['New Lead Webhook'].json.body.location ?? null) }},\n  \"score\": {{ $json.score }},\n  \"confidence\": \"{{ $json.confidence }}\",\n  \"reason\": \"{{ $json.reason }}\"\n}",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [192, -80],
+        "id": "6ad7cb96-470c-458a-a5cc-9ae0342f994f",
+        "name": "draft"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://api:8000/log",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"name\": \"{{ $node['New Lead Webhook'].json.body.name }}\",\n  \"company\": \"{{ $node['enrich'].json.company_name }}\",\n  \"title\": {{ JSON.stringify($node['New Lead Webhook'].json.body.title ?? null) }},\n  \"company_size\": \"{{ $node['enrich'].json.company_size }}\",\n  \"industry\": \"{{ $node['enrich'].json.industry }}\",\n  \"linkedin_active_recently\": {{ JSON.stringify($node['New Lead Webhook'].json.body.linkedin_active_recently ?? null) }},\n  \"estimated_monthly_leads\": {{ JSON.stringify($node['New Lead Webhook'].json.body.estimated_monthly_leads ?? null) }},\n  \"has_dedicated_sales_role\": {{ JSON.stringify($node['New Lead Webhook'].json.body.has_dedicated_sales_role ?? null) }},\n  \"recent_signal\": {{ JSON.stringify($node['New Lead Webhook'].json.body.recent_signal ?? null) }},\n  \"location\": {{ JSON.stringify($node['New Lead Webhook'].json.body.location ?? null) }},\n  \"score\": {{ $node['score'].json.score }},\n  \"confidence\": \"{{ $node['score'].json.confidence }}\",\n  \"reason\": \"{{ $node['score'].json.reason }}\",\n  \"drafted_message\": {{ JSON.stringify($json.drafted ? $json.message : null) }}\n}",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.4,
+        "position": [400, -80],
+        "id": "936ad303-e5c4-4073-8ffe-3190d6b1862c",
+        "name": "log"
+      }
+    ],
+    "connections": {
+      "New Lead Webhook": {
+        "main": [[{ "node": "enrich", "type": "main", "index": 0 }]]
+      },
+      "enrich": {
+        "main": [[{ "node": "score", "type": "main", "index": 0 }]]
+      },
+      "score": {
+        "main": [[{ "node": "draft", "type": "main", "index": 0 }]]
+      },
+      "draft": {
+        "main": [[{ "node": "log", "type": "main", "index": 0 }]]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1"
+    }
+  }
+]
