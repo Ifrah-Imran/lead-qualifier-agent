@@ -78,3 +78,49 @@ Built real /score logic using OpenAI structured outputs. Tested 3 cases (good/bo
 - This was caught by manually reviewing real output critically, not by
   automated tests - a reminder that automated tests don't catch every
   real-world failure mode.
+
+  ## Major UI redesign + real bug fixes
+- Redesigned the dashboard through multiple iterations (Notion-inspired
+  light theme -> bold, dark, color-blocked card system) - landed on a
+  dark fintech-inspired aesthetic with a color-coded lead card system
+  and an icon sidebar.
+- Fixed real bug: the lead card's title was showing the contact name
+  (defaulting to "Unknown" when blank) instead of the company name.
+  Company name is now the primary bold title; contact name shows as
+  secondary text only when it's actually set.
+- Added DELETE /leads/{id} (app/main.py, app/db.py) and a delete/trash
+  icon with a confirmation prompt on each card - verified end to end by
+  creating and deleting a real test lead.
+- Investigated and clarified: enrichment nulls on Pinterest/Booking.com
+  are a real scraper limitation (JS-rendered content isn't readable by
+  requests+BeautifulSoup, no headless browser in the stack) - not a
+  bug. Documented as a known constraint; a real fix would mean adding
+  Playwright, deferred for now.
+- Built contact info extraction: phone number + social links
+  (LinkedIn/Instagram/Facebook) parsed from the same pages /enrich
+  already fetches, no new requests. Required a real schema migration
+  (leads.phone, leads.social_links) - caught two live bugs while
+  testing against a real site (a `::jsonb` cast syntax error in the
+  raw SQL, and existing rows getting NULL instead of '{}' for the new
+  column, which crashed GET /leads) and fixed both before calling it
+  done.
+- Fixed drafted-message text getting clipped on some cards: the
+  blockquote had no word-wrap safeguard, so a long unbroken string
+  (e.g. a URL) in a generated message could overflow past the card's
+  overflow-hidden boundary while normally-wrapping messages looked
+  fine - inconsistent-looking, but one root cause.
+- Reverted contact name back to optional in the quick-test form (had
+  briefly made it required; the card-title fix means an unset name is
+  now hidden entirely instead of showing "Unknown", so the optional
+  field is no longer confusing).
+- Found and fixed a real repo-hygiene bug: frontend/lib/ (api.ts,
+  pipeline.ts, csv.ts, cardColors.ts) was silently gitignored this
+  entire session by a Python-packaging `lib/` pattern that matches at
+  any depth, not just repo root. Anchored it to `/lib/` in .gitignore
+  so it only catches the intended Python build directory.
+- Learned: verify AI-reported "done" claims against actual rendered or
+  served output, not just written summaries - a couple of things got
+  reported complete but weren't actually live (one CSS fix that didn't
+  fully resolve until a second root cause was found; a migration that
+  looked right on paper but had a syntax error only a real API call
+  caught).

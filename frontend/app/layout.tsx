@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Lead Qualifier Dashboard",
-  description: "Review and approve/reject qualified leads",
+  title: "AI Lead Qualification & Outreach",
+  description: "Enrich, score, and draft outreach for new leads, then review and approve them.",
 };
 
 export default function RootLayout({

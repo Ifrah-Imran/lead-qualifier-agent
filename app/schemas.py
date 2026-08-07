@@ -145,6 +145,15 @@ class EnrichResult(BaseModel):
         default_factory=list,
         description="URLs that were successfully fetched",
     )
+    phone: Optional[str] = Field(
+        None,
+        description="Best-effort phone number found in scraped page text",
+    )
+    social_links: dict[str, str] = Field(
+        default_factory=dict,
+        description="Social profile URLs found via <a href>, keyed by platform "
+        "(linkedin/instagram/facebook/twitter)",
+    )
 
 
 class LogRequest(BaseModel):
@@ -160,6 +169,8 @@ class LogRequest(BaseModel):
     has_dedicated_sales_role: Optional[bool] = None
     recent_signal: Optional[str] = None
     location: Optional[str] = None
+    phone: Optional[str] = None
+    social_links: dict[str, str] = Field(default_factory=dict)
     score: int = Field(..., ge=1, le=10)
     confidence: Literal["low", "medium", "high"]
     reason: str
@@ -181,6 +192,8 @@ class Lead(BaseModel):
     has_dedicated_sales_role: Optional[bool] = None
     recent_signal: Optional[str] = None
     location: Optional[str] = None
+    phone: Optional[str] = None
+    social_links: dict[str, str] = Field(default_factory=dict)
     score: Optional[int] = None
     confidence: Optional[str] = None
     reason: Optional[str] = None

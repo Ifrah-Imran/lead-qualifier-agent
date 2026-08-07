@@ -7,6 +7,7 @@ from openai import OpenAI
 from app.config import ALLOWED_ORIGINS, OPENAI_API_KEY
 from app.db import (
     company_drafted_recently,
+    delete_lead,
     ensure_leads_table,
     insert_lead,
     list_leads,
@@ -116,7 +117,8 @@ def health_check():
 
 @app.post("/enrich", response_model=EnrichResult)
 def enrich(payload: EnrichRequest) -> EnrichResult:
-    combined_text, source_urls = gather_company_text(payload.website_url)
+    scraped = gather_company_text(payload.website_url)
+    combined_text, source_urls = scraped.text, scraped.source_urls
 
     if not source_urls or len(combined_text.strip()) < MIN_ENRICH_TEXT_CHARS:
         return EnrichResult(
@@ -125,6 +127,8 @@ def enrich(payload: EnrichRequest) -> EnrichResult:
             industry=None,
             pages_fetched=len(source_urls),
             source_urls=source_urls,
+            phone=scraped.phone,
+            social_links=scraped.social_links,
         )
 
     if not OPENAI_API_KEY:
@@ -195,6 +199,8 @@ def enrich(payload: EnrichRequest) -> EnrichResult:
             industry=parsed.get("industry"),
             pages_fetched=len(source_urls),
             source_urls=source_urls,
+            phone=scraped.phone,
+            social_links=scraped.social_links,
         )
     except Exception as exc:
         raise HTTPException(
@@ -413,6 +419,8 @@ def log(payload: LogRequest) -> LogResult:
                 "has_dedicated_sales_role": payload.has_dedicated_sales_role,
                 "recent_signal": payload.recent_signal,
                 "location": payload.location,
+                "phone": payload.phone,
+                "social_links": payload.social_links,
                 "score": payload.score,
                 "confidence": payload.confidence,
                 "reason": payload.reason,
@@ -473,3 +481,14 @@ def patch_lead_status(lead_id: int, payload: UpdateStatusRequest) -> Lead:
         raise HTTPException(status_code=404, detail=f"Lead {lead_id} not found")
 
     return row
+
+
+@app.delete("/leads/{lead_id}", status_code=204)
+def delete_lead_endpoint(lead_id: int) -> None:
+    try:
+        deleted = delete_lead(lead_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to delete lead: {exc}") from exc
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Lead {lead_id} not found")

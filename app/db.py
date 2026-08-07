@@ -1,5 +1,7 @@
 """Postgres helpers for the leads table."""
 
+import json
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
@@ -20,6 +22,8 @@ CREATE TABLE IF NOT EXISTS leads (
     has_dedicated_sales_role BOOLEAN,
     recent_signal TEXT,
     location TEXT,
+    phone TEXT,
+    social_links JSONB NOT NULL DEFAULT '{}'::jsonb,
     score INTEGER,
     confidence TEXT,
     reason TEXT,
@@ -27,6 +31,14 @@ CREATE TABLE IF NOT EXISTS leads (
     status TEXT NOT NULL DEFAULT 'New',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+"""
+
+ALTER_LEADS_ADD_CONTACT_COLUMNS_SQL = """
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS social_links JSONB;
+UPDATE leads SET social_links = '{}'::jsonb WHERE social_links IS NULL;
+ALTER TABLE leads ALTER COLUMN social_links SET DEFAULT '{}'::jsonb;
+ALTER TABLE leads ALTER COLUMN social_links SET NOT NULL;
 """
 
 INSERT_LEAD_SQL = """
@@ -41,6 +53,8 @@ INSERT INTO leads (
     has_dedicated_sales_role,
     recent_signal,
     location,
+    phone,
+    social_links,
     score,
     confidence,
     reason,
@@ -57,6 +71,8 @@ INSERT INTO leads (
     :has_dedicated_sales_role,
     :recent_signal,
     :location,
+    :phone,
+    CAST(:social_links AS jsonb),
     :score,
     :confidence,
     :reason,
@@ -78,6 +94,12 @@ UPDATE leads
 SET status = :status
 WHERE id = :id
 RETURNING *;
+"""
+
+DELETE_LEAD_SQL = """
+DELETE FROM leads
+WHERE id = :id
+RETURNING id;
 """
 
 
@@ -105,9 +127,12 @@ INSERT INTO draft_attempts (company) VALUES (:company);
 
 
 def ensure_leads_table() -> None:
-    """Create application tables if they do not already exist."""
+    """Create application tables if they do not already exist, and self-migrate
+    any columns added since a table was first created (idempotent, safe to
+    run on every startup)."""
     with engine.begin() as conn:
         conn.execute(text(CREATE_LEADS_TABLE_SQL))
+        conn.execute(text(ALTER_LEADS_ADD_CONTACT_COLUMNS_SQL))
         conn.execute(text(CREATE_DRAFT_ATTEMPTS_TABLE_SQL))
 
 
@@ -126,6 +151,7 @@ def record_draft_attempt(company: str) -> None:
 
 def insert_lead(values: dict) -> dict:
     """Insert one lead row and return id/status/created_at."""
+    values = {**values, "social_links": json.dumps(values.get("social_links") or {})}
     with engine.begin() as conn:
         row = conn.execute(text(INSERT_LEAD_SQL), values).mappings().one()
         return dict(row)
@@ -143,3 +169,10 @@ def update_lead_status(lead_id: int, status: str) -> dict | None:
     with engine.begin() as conn:
         row = conn.execute(text(UPDATE_LEAD_STATUS_SQL), {"id": lead_id, "status": status}).mappings().first()
         return dict(row) if row else None
+
+
+def delete_lead(lead_id: int) -> bool:
+    """Delete a lead by id. Returns True if a row was deleted, False if it didn't exist."""
+    with engine.begin() as conn:
+        row = conn.execute(text(DELETE_LEAD_SQL), {"id": lead_id}).first()
+        return row is not None
