@@ -1,0 +1,33 @@
+services:
+  # Overlay: routes public traffic through Caddy for automatic HTTPS and
+  # stops publishing app ports directly to the internet.
+  # Use with: docker compose -f docker-compose.prod.yml -f docker-compose.caddy.yml up -d
+  api:
+    ports: !reset []
+
+  n8n:
+    ports: !reset []
+
+  frontend:
+    ports: !reset []
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - n8n
+      - frontend
+
+volumes:
+  caddy_data:
+  caddy_config:

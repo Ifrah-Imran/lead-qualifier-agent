@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 
-from app.config import OPENAI_API_KEY
+from app.config import ALLOWED_ORIGINS, OPENAI_API_KEY
 from app.db import (
     company_drafted_recently,
     ensure_leads_table,
@@ -39,7 +39,7 @@ app = FastAPI(title="Lead Qualifier Agent")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
