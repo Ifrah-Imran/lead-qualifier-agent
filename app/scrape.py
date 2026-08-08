@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -111,6 +112,21 @@ def visible_text(html: str) -> str:
     return " ".join(text.split())
 
 
+def meta_description(html: str) -> Optional[str]:
+    """Pull <meta name="description"> or <meta property="og:description">.
+    Many JS-rendered SPAs serve a near-empty <body> to non-JS scrapers but
+    still server-render SEO meta tags with a real, human-written summary —
+    that's real signal, thrown away if we only look at visible body text."""
+    soup = BeautifulSoup(html, "html.parser")
+    for attrs in ({"name": "description"}, {"property": "og:description"}):
+        tag = soup.find("meta", attrs=attrs)
+        if tag:
+            content = (tag.get("content") or "").strip()
+            if content:
+                return content
+    return None
+
+
 def find_related_links(html: str, base_url: str, limit: int = MAX_EXTRA_PAGES) -> list[str]:
     """Find up to `limit` same-site links whose URL or label mentions ICP-ish pages."""
     soup = BeautifulSoup(html, "html.parser")
@@ -182,22 +198,78 @@ def find_email(text: str, html: str) -> Optional[str]:
     return None
 
 
-def find_social_links(html: str) -> dict[str, str]:
-    """Scan <a href> tags for links to known social platforms."""
+def _match_social_platform(url: str) -> Optional[str]:
+    """Return the social platform a URL belongs to, or None."""
+    host = urlparse(url).netloc.lower()
+    if not host:
+        return None
+    for platform, domains in SOCIAL_DOMAINS.items():
+        if any(host == d or host.endswith(f".{d}") for d in domains):
+            return platform
+    return None
+
+
+def _iter_jsonld_objects(html: str):
+    """Yield each dict found in <script type="application/ld+json"> blocks,
+    flattening @graph arrays. Malformed/non-dict blocks are skipped —
+    this never raises."""
     soup = BeautifulSoup(html, "html.parser")
+    for script in soup.find_all("script", type="application/ld+json"):
+        raw = script.string
+        if not raw:
+            continue
+        try:
+            data: Any = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        for item in data if isinstance(data, list) else [data]:
+            if not isinstance(item, dict):
+                continue
+            graph = item.get("@graph")
+            if isinstance(graph, list):
+                for sub in graph:
+                    if isinstance(sub, dict):
+                        yield sub
+            else:
+                yield item
+
+
+def find_jsonld_social_links(html: str) -> dict[str, str]:
+    """Scan JSON-LD structured data (Organization/WebSite `sameAs`) for
+    social profile links. Many modern sites — especially JS-rendered ones —
+    only publish their canonical social links here, not as visible <a href>
+    elements, since `sameAs` is written for search engines, not humans."""
     found: dict[str, str] = {}
+    for obj in _iter_jsonld_objects(html):
+        same_as = obj.get("sameAs")
+        if not same_as:
+            continue
+        urls = same_as if isinstance(same_as, list) else [same_as]
+        for url in urls:
+            if not isinstance(url, str):
+                continue
+            platform = _match_social_platform(url)
+            if platform and platform not in found:
+                found[platform] = url
+    return found
+
+
+def find_social_links(html: str) -> dict[str, str]:
+    """Find social profile links: JSON-LD structured data first (the site's
+    own canonical self-description, so more trustworthy than an arbitrary
+    matching <a href> — e.g. an embedded tweet linking to x.com isn't the
+    company's own account), then <a href> tags for any platform not already
+    found there."""
+    found: dict[str, str] = find_jsonld_social_links(html)
+
+    soup = BeautifulSoup(html, "html.parser")
     for anchor in soup.find_all("a", href=True):
         href = anchor.get("href", "").strip()
         if not href:
             continue
-        host = urlparse(href).netloc.lower()
-        if not host:
-            continue
-        for platform, domains in SOCIAL_DOMAINS.items():
-            if platform in found:
-                continue
-            if any(host == d or host.endswith(f".{d}") for d in domains):
-                found[platform] = href
+        platform = _match_social_platform(href)
+        if platform and platform not in found:
+            found[platform] = href
     return found
 
 
@@ -221,6 +293,9 @@ def gather_company_text(website_url: str) -> ScrapeResult:
     def process_page(html: str) -> None:
         nonlocal phone, email
         text = visible_text(html)
+        description = meta_description(html)
+        if description and description not in text:
+            text = f"{description}\n\n{text}" if text else description
         chunks.append(text)
         if phone is None:
             phone = find_phone(text)
