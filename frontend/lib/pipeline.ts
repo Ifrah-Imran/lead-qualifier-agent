@@ -46,6 +46,7 @@ export async function runLeadPipeline(
     location: input.location,
     phone: enrichResult.phone,
     social_links: enrichResult.social_links,
+    website_url: enrichResult.website_url,
   };
 
   onProgress("score");
@@ -85,6 +86,7 @@ export async function runLeadPipeline(
     location: leadInput.location,
     phone: leadInput.phone,
     social_links: leadInput.social_links,
+    website_url: leadInput.website_url,
     score: scoreResult.score,
     confidence: scoreResult.confidence,
     reason: scoreResult.reason,

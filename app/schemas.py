@@ -129,6 +129,10 @@ class EnrichResult(BaseModel):
     """Estimated company facts from page text — null when signal is too weak."""
 
     company_name: str
+    website_url: str = Field(
+        ...,
+        description="Normalized website URL (scheme added if missing) that was scraped",
+    )
     company_size: Optional[str] = Field(
         None,
         description="Employee-count range if evidenced in page text, e.g. '10-20'",
@@ -171,6 +175,7 @@ class LogRequest(BaseModel):
     location: Optional[str] = None
     phone: Optional[str] = None
     social_links: dict[str, str] = Field(default_factory=dict)
+    website_url: Optional[str] = None
     score: int = Field(..., ge=1, le=10)
     confidence: Literal["low", "medium", "high"]
     reason: str
@@ -194,6 +199,7 @@ class Lead(BaseModel):
     location: Optional[str] = None
     phone: Optional[str] = None
     social_links: dict[str, str] = Field(default_factory=dict)
+    website_url: Optional[str] = None
     score: Optional[int] = None
     confidence: Optional[str] = None
     reason: Optional[str] = None

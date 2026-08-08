@@ -16,6 +16,7 @@ export type Lead = {
   location: string | null;
   phone: string | null;
   social_links: Record<string, string>;
+  website_url: string | null;
   score: number | null;
   confidence: string | null;
   reason: string | null;
@@ -56,6 +57,7 @@ export async function deleteLead(id: number): Promise<void> {
 export type EnrichRequest = { company_name: string; website_url: string };
 export type EnrichResult = {
   company_name: string;
+  website_url: string;
   company_size: string | null;
   industry: string | null;
   pages_fetched: number;
@@ -77,6 +79,7 @@ export type LeadInput = {
   location: string | null;
   phone: string | null;
   social_links: Record<string, string>;
+  website_url: string | null;
 };
 
 export type LeadScoreResult = {

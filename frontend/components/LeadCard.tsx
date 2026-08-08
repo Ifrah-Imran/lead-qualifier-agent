@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Check, ChevronDown, Link as LinkIcon, Phone, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ExternalLink, Link as LinkIcon, Phone, Trash2, X } from "lucide-react";
 
 import ScoreBadge from "@/components/ScoreBadge";
 import { Badge } from "@/components/ui/badge";
@@ -109,9 +109,25 @@ export default function LeadCard({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="truncate text-sm font-semibold" style={{ color: colors.cardText }}>
-              {lead.company}
-            </h3>
+            <div className="flex items-center gap-1.5">
+              <h3 className="truncate text-sm font-semibold" style={{ color: colors.cardText }}>
+                {lead.company}
+              </h3>
+              {lead.website_url && (
+                <a
+                  href={lead.website_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label="Visit company website"
+                  title={lead.website_url}
+                  className="shrink-0 rounded p-0.5 opacity-70 transition-opacity hover:opacity-100"
+                  style={{ color: colors.cardTextMuted }}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </div>
             {lead.name && lead.name !== "Unknown" && (
               <p className="truncate text-sm" style={{ color: colors.cardTextMuted }}>
                 {lead.name}

@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS leads (
     location TEXT,
     phone TEXT,
     social_links JSONB NOT NULL DEFAULT '{}'::jsonb,
+    website_url TEXT,
     score INTEGER,
     confidence TEXT,
     reason TEXT,
@@ -39,6 +40,7 @@ ALTER TABLE leads ADD COLUMN IF NOT EXISTS social_links JSONB;
 UPDATE leads SET social_links = '{}'::jsonb WHERE social_links IS NULL;
 ALTER TABLE leads ALTER COLUMN social_links SET DEFAULT '{}'::jsonb;
 ALTER TABLE leads ALTER COLUMN social_links SET NOT NULL;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS website_url TEXT;
 """
 
 INSERT_LEAD_SQL = """
@@ -55,6 +57,7 @@ INSERT INTO leads (
     location,
     phone,
     social_links,
+    website_url,
     score,
     confidence,
     reason,
@@ -73,6 +76,7 @@ INSERT INTO leads (
     :location,
     :phone,
     CAST(:social_links AS jsonb),
+    :website_url,
     :score,
     :confidence,
     :reason,

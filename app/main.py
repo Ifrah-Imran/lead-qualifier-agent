@@ -34,7 +34,7 @@ from app.schemas import (
     UpdateStatusRequest,
     parse_company_size,
 )
-from app.scrape import gather_company_text
+from app.scrape import gather_company_text, normalize_url
 
 app = FastAPI(title="Lead Qualifier Agent")
 
@@ -117,12 +117,14 @@ def health_check():
 
 @app.post("/enrich", response_model=EnrichResult)
 def enrich(payload: EnrichRequest) -> EnrichResult:
+    website_url = normalize_url(payload.website_url)
     scraped = gather_company_text(payload.website_url)
     combined_text, source_urls = scraped.text, scraped.source_urls
 
     if not source_urls or len(combined_text.strip()) < MIN_ENRICH_TEXT_CHARS:
         return EnrichResult(
             company_name=payload.company_name,
+            website_url=website_url,
             company_size=None,
             industry=None,
             pages_fetched=len(source_urls),
@@ -195,6 +197,7 @@ def enrich(payload: EnrichRequest) -> EnrichResult:
         parsed = json.loads(raw_args)
         return EnrichResult(
             company_name=payload.company_name,
+            website_url=website_url,
             company_size=parsed.get("company_size"),
             industry=parsed.get("industry"),
             pages_fetched=len(source_urls),
@@ -421,6 +424,7 @@ def log(payload: LogRequest) -> LogResult:
                 "location": payload.location,
                 "phone": payload.phone,
                 "social_links": payload.social_links,
+                "website_url": payload.website_url,
                 "score": payload.score,
                 "confidence": payload.confidence,
                 "reason": payload.reason,
