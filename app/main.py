@@ -63,12 +63,13 @@ Score how well a lead matches this Ideal Customer Profile (ICP):
 {ICP}
 
 Rules:
-- Lead data has already been through enrichment. Treat null/missing fields as unknown — do NOT invent or guess values.
-- Missing key fields (title, company_size, industry, estimated_monthly_leads, linkedin_active_recently, location, etc.) should lower confidence, and the reason should mention the uncertainty.
-- Still return a score 1-10 based only on what is known.
+- Lead data has already been through website-scraping enrichment, which often comes back null (site unreachable, JS-rendered, or the page just didn't state a number) — a null field means "not evidenced in scraped text," not "unknown to you."
+- If you recognize the company by name, use your own general knowledge of it (what it does, roughly how large it is, its business model, funding stage) to judge fit — do not treat a well-known company as a blank slate just because structured fields are null. Only fall back to "insufficient information" reasoning when you genuinely don't recognize the company and no fields are populated.
+- Do not invent specific numbers you're not confident in (an exact headcount, an exact MRR) — but qualitative fit judgments ("small developer-tools SaaS startup", "fast-food chain", "large public tech company") are expected and encouraged whenever you actually have that knowledge.
+- Missing structured fields should lower CONFIDENCE, not cap the SCORE. Confidence carries the uncertainty; score should reflect your genuine best assessment of fit — a clearly-good-fit company with missing fields should still score well at low/medium confidence, not default to a low score just because the JSON is sparse.
 - confidence must be exactly one of: low, medium, high.
-- reason must be exactly one sentence.
-- If similar past examples are provided, use them as calibration (similar leads should get similar scores) but still judge this lead on its own merits.
+- reason must be exactly one sentence, and must reflect the actual reasoning used (company knowledge, ICP disqualifiers, or genuine lack of information) — not a generic "fields are missing" line when you actually know more than that.
+- Similar past examples are retrieved by structural similarity (which fields are populated vs. null) — two unrelated companies can look "similar" purely because both have sparse data. Use past examples only to calibrate your scoring SCALE (what a 3 looks like vs. an 8) — never copy their reasoning or their score just because this lead is structurally sparse like they were. If you recognize this specific company, that recognition overrides structural similarity to unrelated past examples.
 """.strip()
 
 DRAFT_SYSTEM_PROMPT = """

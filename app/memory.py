@@ -48,20 +48,26 @@ def lead_to_embed_text(lead: dict[str, Any]) -> str:
     Build the text that gets turned into an embedding vector.
 
     Only lead-profile fields go here — not the score/draft — so retrieval
-    matches "similar companies/people", not similar past scores.
+    matches "similar companies/people", not similar past scores. Unset
+    fields are omitted entirely rather than written as literal "unknown" —
+    when most fields are null (the common case), repeating "unknown" across
+    most lines dominates the embedding and makes unrelated sparse leads look
+    artificially similar, drowning out the one signal that actually
+    identifies the company (its name).
     """
-    parts = [
-        f"Name: {lead.get('name') or 'unknown'}",
-        f"Company: {lead.get('company') or 'unknown'}",
-        f"Title: {lead.get('title') or 'unknown'}",
-        f"Company size: {lead.get('company_size') if lead.get('company_size') is not None else 'unknown'}",
-        f"Industry: {lead.get('industry') or 'unknown'}",
-        f"Location: {lead.get('location') or 'unknown'}",
-        f"Estimated monthly leads: {lead.get('estimated_monthly_leads') if lead.get('estimated_monthly_leads') is not None else 'unknown'}",
-        f"Has dedicated sales role: {lead.get('has_dedicated_sales_role') if lead.get('has_dedicated_sales_role') is not None else 'unknown'}",
-        f"LinkedIn active recently: {lead.get('linkedin_active_recently') if lead.get('linkedin_active_recently') is not None else 'unknown'}",
-        f"Recent signal: {lead.get('recent_signal') or 'none'}",
+    field_labels = [
+        ("name", "Name"),
+        ("company", "Company"),
+        ("title", "Title"),
+        ("company_size", "Company size"),
+        ("industry", "Industry"),
+        ("location", "Location"),
+        ("estimated_monthly_leads", "Estimated monthly leads"),
+        ("has_dedicated_sales_role", "Has dedicated sales role"),
+        ("linkedin_active_recently", "LinkedIn active recently"),
+        ("recent_signal", "Recent signal"),
     ]
+    parts = [f"{label}: {lead[key]}" for key, label in field_labels if lead.get(key) is not None]
     return "\n".join(parts)
 
 
