@@ -153,10 +153,24 @@ class EnrichResult(BaseModel):
         None,
         description="Best-effort phone number found in scraped page text",
     )
+    email: Optional[str] = Field(
+        None,
+        description="Best-effort email address found via mailto: link or scraped page text",
+    )
     social_links: dict[str, str] = Field(
         default_factory=dict,
         description="Social profile URLs found via <a href>, keyed by platform "
         "(linkedin/instagram/facebook/twitter)",
+    )
+    reachable: bool = Field(
+        ...,
+        description="False if the homepage itself could not be fetched at all "
+        "(DNS failure, timeout, SSL error, HTTP error) — distinct from a "
+        "reachable site that simply has no matching data",
+    )
+    fetch_error: Optional[str] = Field(
+        None,
+        description="Human-readable reason the homepage was unreachable, or null if reachable",
     )
 
 
@@ -174,8 +188,10 @@ class LogRequest(BaseModel):
     recent_signal: Optional[str] = None
     location: Optional[str] = None
     phone: Optional[str] = None
+    email: Optional[str] = None
     social_links: dict[str, str] = Field(default_factory=dict)
     website_url: Optional[str] = None
+    website_unreachable: Optional[str] = None
     score: int = Field(..., ge=1, le=10)
     confidence: Literal["low", "medium", "high"]
     reason: str
@@ -198,8 +214,10 @@ class Lead(BaseModel):
     recent_signal: Optional[str] = None
     location: Optional[str] = None
     phone: Optional[str] = None
+    email: Optional[str] = None
     social_links: dict[str, str] = Field(default_factory=dict)
     website_url: Optional[str] = None
+    website_unreachable: Optional[str] = None
     score: Optional[int] = None
     confidence: Optional[str] = None
     reason: Optional[str] = None

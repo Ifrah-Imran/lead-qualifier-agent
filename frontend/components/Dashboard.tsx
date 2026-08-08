@@ -4,12 +4,13 @@ import { useState } from "react";
 
 import { Dialog } from "@/components/ui/dialog";
 import { Toast, ToastState } from "@/components/ui/toast";
+import DeleteAllDialog from "@/components/DeleteAllDialog";
 import Header from "@/components/Header";
 import LeadsGrid from "@/components/LeadsGrid";
 import ProcessingPanel, { RowRunState } from "@/components/ProcessingPanel";
 import StatsRow from "@/components/StatsRow";
 import UploadPanel from "@/components/UploadPanel";
-import { Lead } from "@/lib/api";
+import { deleteAllLeads, Lead } from "@/lib/api";
 import { RawLeadInput, runLeadPipeline } from "@/lib/pipeline";
 
 const HIGHLIGHT_DURATION_MS = 6000;
@@ -21,6 +22,25 @@ export default function Dashboard({ initialLeads }: { initialLeads: Lead[] }) {
   const [rows, setRows] = useState<RowRunState[]>([]);
   const [toast, setToast] = useState<ToastState>(null);
   const [highlightedIds, setHighlightedIds] = useState<Set<number>>(new Set());
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+
+  async function handleDeleteAll() {
+    setDeletingAll(true);
+    try {
+      const { deleted } = await deleteAllLeads();
+      setLeads([]);
+      setDeleteAllOpen(false);
+      setToast({ message: `Deleted ${deleted} lead${deleted === 1 ? "" : "s"}.`, tone: "success" });
+    } catch (err) {
+      setToast({
+        message: err instanceof Error ? err.message : "Failed to delete all leads",
+        tone: "error",
+      });
+    } finally {
+      setDeletingAll(false);
+    }
+  }
 
   async function handleRun(inputs: RawLeadInput[]) {
     if (inputs.length === 0) return;
@@ -77,7 +97,7 @@ export default function Dashboard({ initialLeads }: { initialLeads: Lead[] }) {
     <div className="space-y-6">
       <Toast toast={toast} onDismiss={() => setToast(null)} />
 
-      <Header onAddLeads={() => setAddLeadsOpen(true)} />
+      <Header onAddLeads={() => setAddLeadsOpen(true)} onDeleteAll={() => setDeleteAllOpen(true)} />
       <StatsRow leads={leads} />
       <div className="pt-4">
         <LeadsGrid
@@ -99,6 +119,14 @@ export default function Dashboard({ initialLeads }: { initialLeads: Lead[] }) {
       >
         {running ? <ProcessingPanel rows={rows} /> : <UploadPanel disabled={running} onRun={handleRun} />}
       </Dialog>
+
+      <DeleteAllDialog
+        open={deleteAllOpen}
+        onOpenChange={setDeleteAllOpen}
+        leadCount={leads.length}
+        pending={deletingAll}
+        onConfirm={handleDeleteAll}
+      />
     </div>
   );
 }

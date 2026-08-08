@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Check, ChevronDown, ExternalLink, Link as LinkIcon, Phone, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ExternalLink, Link as LinkIcon, Mail, Phone, Trash2, X } from "lucide-react";
 
 import ScoreBadge from "@/components/ScoreBadge";
 import { Badge } from "@/components/ui/badge";
@@ -155,6 +155,12 @@ export default function LeadCard({
         <div className="flex flex-wrap items-center gap-2">
           <ScoreBadge score={lead.score} pillBg={colors.pillBg} pillText={colors.pillText} />
           <StatusPill status={lead.status} pillBg={colors.pillBg} pillText={colors.pillText} />
+          {lead.website_unreachable && (
+            <span className="flex items-center gap-1 text-xs font-medium text-destructive">
+              <AlertTriangle className="h-3 w-3" />
+              Site unreachable
+            </span>
+          )}
           {missingFields.length > 0 && (
             <span
               className="flex items-center gap-1 text-xs"
@@ -169,13 +175,20 @@ export default function LeadCard({
 
       {expanded && (
         <div className="flex flex-col gap-4 border-t border-border bg-background p-6">
+          {lead.website_unreachable && (
+            <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>Could not reach this website — {lead.website_unreachable}</span>
+            </div>
+          )}
+
           <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             {OPTIONAL_FIELDS.slice(0, 4).map((f) => (
               <MetaField key={f.key} label={f.label} value={lead[f.key] as string | number | boolean | null} />
             ))}
           </dl>
 
-          {(lead.phone || Object.keys(lead.social_links).length > 0) && (
+          {(lead.phone || lead.email || Object.keys(lead.social_links).length > 0) && (
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">Contact info found</p>
               <div className="flex flex-wrap items-center gap-2">
@@ -186,6 +199,15 @@ export default function LeadCard({
                   >
                     <Phone className="h-3.5 w-3.5" />
                     {lead.phone}
+                  </a>
+                )}
+                {lead.email && (
+                  <a
+                    href={`mailto:${lead.email}`}
+                    className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-sm text-foreground transition-colors hover:bg-secondary"
+                  >
+                    <Mail className="h-3.5 w-3.5" />
+                    {lead.email}
                   </a>
                 )}
                 {Object.entries(lead.social_links).map(([platform, url]) => (

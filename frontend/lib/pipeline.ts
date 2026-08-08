@@ -45,8 +45,12 @@ export async function runLeadPipeline(
     recent_signal: input.recent_signal,
     location: input.location,
     phone: enrichResult.phone,
+    email: enrichResult.email,
     social_links: enrichResult.social_links,
     website_url: enrichResult.website_url,
+    website_unreachable: enrichResult.reachable
+      ? null
+      : enrichResult.fetch_error ?? "Could not reach this website",
   };
 
   onProgress("score");
@@ -85,8 +89,10 @@ export async function runLeadPipeline(
     recent_signal: leadInput.recent_signal,
     location: leadInput.location,
     phone: leadInput.phone,
+    email: leadInput.email,
     social_links: leadInput.social_links,
     website_url: leadInput.website_url,
+    website_unreachable: leadInput.website_unreachable,
     score: scoreResult.score,
     confidence: scoreResult.confidence,
     reason: scoreResult.reason,

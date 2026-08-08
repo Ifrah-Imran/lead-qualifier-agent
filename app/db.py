@@ -23,8 +23,10 @@ CREATE TABLE IF NOT EXISTS leads (
     recent_signal TEXT,
     location TEXT,
     phone TEXT,
+    email TEXT,
     social_links JSONB NOT NULL DEFAULT '{}'::jsonb,
     website_url TEXT,
+    website_unreachable TEXT,
     score INTEGER,
     confidence TEXT,
     reason TEXT,
@@ -41,6 +43,8 @@ UPDATE leads SET social_links = '{}'::jsonb WHERE social_links IS NULL;
 ALTER TABLE leads ALTER COLUMN social_links SET DEFAULT '{}'::jsonb;
 ALTER TABLE leads ALTER COLUMN social_links SET NOT NULL;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS website_url TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS website_unreachable TEXT;
 """
 
 INSERT_LEAD_SQL = """
@@ -56,8 +60,10 @@ INSERT INTO leads (
     recent_signal,
     location,
     phone,
+    email,
     social_links,
     website_url,
+    website_unreachable,
     score,
     confidence,
     reason,
@@ -75,8 +81,10 @@ INSERT INTO leads (
     :recent_signal,
     :location,
     :phone,
+    :email,
     CAST(:social_links AS jsonb),
     :website_url,
+    :website_unreachable,
     :score,
     :confidence,
     :reason,
@@ -103,6 +111,11 @@ RETURNING *;
 DELETE_LEAD_SQL = """
 DELETE FROM leads
 WHERE id = :id
+RETURNING id;
+"""
+
+DELETE_ALL_LEADS_SQL = """
+DELETE FROM leads
 RETURNING id;
 """
 
@@ -180,3 +193,10 @@ def delete_lead(lead_id: int) -> bool:
     with engine.begin() as conn:
         row = conn.execute(text(DELETE_LEAD_SQL), {"id": lead_id}).first()
         return row is not None
+
+
+def delete_all_leads() -> int:
+    """Delete every lead. Returns the number of rows deleted."""
+    with engine.begin() as conn:
+        rows = conn.execute(text(DELETE_ALL_LEADS_SQL)).all()
+        return len(rows)

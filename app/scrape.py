@@ -24,6 +24,11 @@ LINK_KEYWORDS = ("about", "team", "company", "careers", "contact")
 # missing unformatted numbers like "5551234567" for fewer false positives.
 PHONE_PATTERN = re.compile(r"\+?\d{1,3}?[-.\s]?\(?\d{2,4}\)?[-.\s]\d{3,4}[-.\s]?\d{3,4}")
 
+EMAIL_PATTERN = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
+# "logo@2x.png" / "photo@3x.jpg" (retina-image naming) match the email shape —
+# excluded by TLD since a real address never ends in an image extension.
+_EMAIL_TLD_EXCLUDE = {"png", "jpg", "jpeg", "gif", "svg", "webp", "ico"}
+
 SOCIAL_DOMAINS: dict[str, tuple[str, ...]] = {
     "linkedin": ("linkedin.com",),
     "instagram": ("instagram.com",),
@@ -37,7 +42,10 @@ class ScrapeResult:
     text: str
     source_urls: list[str] = field(default_factory=list)
     phone: Optional[str] = None
+    email: Optional[str] = None
     social_links: dict[str, str] = field(default_factory=dict)
+    reachable: bool = True
+    fetch_error: Optional[str] = None
 
 # A UA string alone isn't enough for some bot-protection (e.g. Cloudflare) —
 # it also checks for the Accept/Accept-Language headers a real browser sends.
@@ -60,8 +68,22 @@ def normalize_url(url: str) -> str:
     return url
 
 
-def fetch_html(url: str) -> Optional[str]:
-    """Fetch a page. Returns HTML text, or None on timeout/error (never raises)."""
+def _describe_fetch_error(exc: Exception) -> str:
+    """Map a request failure to a short, human-readable reason."""
+    if isinstance(exc, requests.exceptions.SSLError):
+        return "SSL certificate error"
+    if isinstance(exc, requests.exceptions.Timeout):
+        return f"timed out after {PAGE_TIMEOUT_SECONDS}s"
+    if isinstance(exc, requests.exceptions.ConnectionError):
+        if "NameResolutionError" in str(exc) or "getaddrinfo failed" in str(exc):
+            return "domain does not resolve (DNS failure)"
+        return "could not connect"
+    return "failed to load"
+
+
+def fetch_html(url: str) -> tuple[Optional[str], Optional[str]]:
+    """Fetch a page. Returns (html, None) on success, or (None, reason) on
+    timeout/DNS/SSL/HTTP error — never raises."""
     try:
         response = requests.get(
             url,
@@ -70,14 +92,14 @@ def fetch_html(url: str) -> Optional[str]:
             allow_redirects=True,
         )
         response.raise_for_status()
-        return response.text
+        return response.text, None
     except requests.HTTPError as exc:
         status = exc.response.status_code if exc.response is not None else "unknown"
         logger.warning("fetch_html: %s returned HTTP %s", url, status)
-        return None
+        return None, f"site returned HTTP {status}"
     except (requests.RequestException, ValueError) as exc:
         logger.warning("fetch_html: %s failed — %s: %s", url, type(exc).__name__, exc)
-        return None
+        return None, _describe_fetch_error(exc)
 
 
 def visible_text(html: str) -> str:
@@ -137,6 +159,29 @@ def find_phone(text: str) -> Optional[str]:
     return None
 
 
+def _plausible_email(candidate: str) -> bool:
+    tld = candidate.rsplit(".", 1)[-1].lower()
+    return tld not in _EMAIL_TLD_EXCLUDE
+
+
+def find_email(text: str, html: str) -> Optional[str]:
+    """Best-effort: prefer a mailto: link (most reliable), fall back to the
+    first plausible-looking email address in visible page text."""
+    soup = BeautifulSoup(html, "html.parser")
+    for anchor in soup.find_all("a", href=True):
+        href = anchor.get("href", "").strip()
+        if href.lower().startswith("mailto:"):
+            address = href[len("mailto:"):].split("?")[0].strip()
+            if address and _plausible_email(address):
+                return address
+
+    for match in EMAIL_PATTERN.finditer(text):
+        candidate = match.group()
+        if _plausible_email(candidate):
+            return candidate
+    return None
+
+
 def find_social_links(html: str) -> dict[str, str]:
     """Scan <a href> tags for links to known social platforms."""
     soup = BeautifulSoup(html, "html.parser")
@@ -159,26 +204,32 @@ def find_social_links(html: str) -> dict[str, str]:
 def gather_company_text(website_url: str) -> ScrapeResult:
     """
     Fetch homepage + up to 2 related pages.
-    Extracts visible text, a best-effort phone number, and social profile
-    links from the same pages — no extra HTTP requests beyond what enrichment
-    already fetches. Failed pages are skipped — this never raises.
+    Extracts visible text, a best-effort phone number, email address, and
+    social profile links from the same pages — no extra HTTP requests beyond
+    what enrichment already fetches. Failed pages are skipped — this never
+    raises. `reachable` / `fetch_error` reflect only the homepage fetch, since
+    that's the one request that must succeed for enrichment to mean anything;
+    related-page failures are silently best-effort.
     """
     homepage = normalize_url(website_url)
     fetched_urls: list[str] = []
     chunks: list[str] = []
     phone: Optional[str] = None
+    email: Optional[str] = None
     social_links: dict[str, str] = {}
 
     def process_page(html: str) -> None:
-        nonlocal phone
+        nonlocal phone, email
         text = visible_text(html)
         chunks.append(text)
         if phone is None:
             phone = find_phone(text)
+        if email is None:
+            email = find_email(text, html)
         for platform, url in find_social_links(html).items():
             social_links.setdefault(platform, url)
 
-    homepage_html = fetch_html(homepage)
+    homepage_html, fetch_error = fetch_html(homepage)
     if homepage_html:
         fetched_urls.append(homepage)
         process_page(homepage_html)
@@ -187,7 +238,7 @@ def gather_company_text(website_url: str) -> ScrapeResult:
         related = []
 
     for url in related:
-        html = fetch_html(url)
+        html, _related_error = fetch_html(url)
         if not html:
             continue
         fetched_urls.append(url)
@@ -197,4 +248,12 @@ def gather_company_text(website_url: str) -> ScrapeResult:
     if len(combined) > MAX_TEXT_CHARS:
         combined = combined[:MAX_TEXT_CHARS]
 
-    return ScrapeResult(text=combined, source_urls=fetched_urls, phone=phone, social_links=social_links)
+    return ScrapeResult(
+        text=combined,
+        source_urls=fetched_urls,
+        phone=phone,
+        email=email,
+        social_links=social_links,
+        reachable=homepage_html is not None,
+        fetch_error=fetch_error,
+    )

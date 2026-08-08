@@ -7,6 +7,7 @@ from openai import OpenAI
 from app.config import ALLOWED_ORIGINS, OPENAI_API_KEY
 from app.db import (
     company_drafted_recently,
+    delete_all_leads,
     delete_lead,
     ensure_leads_table,
     insert_lead,
@@ -130,7 +131,10 @@ def enrich(payload: EnrichRequest) -> EnrichResult:
             pages_fetched=len(source_urls),
             source_urls=source_urls,
             phone=scraped.phone,
+            email=scraped.email,
             social_links=scraped.social_links,
+            reachable=scraped.reachable,
+            fetch_error=scraped.fetch_error,
         )
 
     if not OPENAI_API_KEY:
@@ -203,7 +207,10 @@ def enrich(payload: EnrichRequest) -> EnrichResult:
             pages_fetched=len(source_urls),
             source_urls=source_urls,
             phone=scraped.phone,
+            email=scraped.email,
             social_links=scraped.social_links,
+            reachable=scraped.reachable,
+            fetch_error=scraped.fetch_error,
         )
     except Exception as exc:
         raise HTTPException(
@@ -423,8 +430,10 @@ def log(payload: LogRequest) -> LogResult:
                 "recent_signal": payload.recent_signal,
                 "location": payload.location,
                 "phone": payload.phone,
+                "email": payload.email,
                 "social_links": payload.social_links,
                 "website_url": payload.website_url,
+                "website_unreachable": payload.website_unreachable,
                 "score": payload.score,
                 "confidence": payload.confidence,
                 "reason": payload.reason,
@@ -485,6 +494,16 @@ def patch_lead_status(lead_id: int, payload: UpdateStatusRequest) -> Lead:
         raise HTTPException(status_code=404, detail=f"Lead {lead_id} not found")
 
     return row
+
+
+@app.delete("/leads")
+def delete_all_leads_endpoint() -> dict:
+    try:
+        deleted = delete_all_leads()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to delete all leads: {exc}") from exc
+
+    return {"deleted": deleted}
 
 
 @app.delete("/leads/{lead_id}", status_code=204)

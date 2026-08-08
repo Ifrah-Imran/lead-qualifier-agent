@@ -15,8 +15,10 @@ export type Lead = {
   recent_signal: string | null;
   location: string | null;
   phone: string | null;
+  email: string | null;
   social_links: Record<string, string>;
   website_url: string | null;
+  website_unreachable: string | null;
   score: number | null;
   confidence: string | null;
   reason: string | null;
@@ -52,6 +54,14 @@ export async function deleteLead(id: number): Promise<void> {
   }
 }
 
+export async function deleteAllLeads(): Promise<{ deleted: number }> {
+  const res = await fetch(`${API_URL}/leads`, { method: "DELETE" });
+  if (!res.ok) {
+    throw new Error(`Failed to delete all leads: ${res.status} ${res.statusText}`);
+  }
+  return res.json();
+}
+
 // --- Pipeline endpoints (enrich -> score -> draft -> log), for client-side batch runs ---
 
 export type EnrichRequest = { company_name: string; website_url: string };
@@ -63,7 +73,10 @@ export type EnrichResult = {
   pages_fetched: number;
   source_urls: string[];
   phone: string | null;
+  email: string | null;
   social_links: Record<string, string>;
+  reachable: boolean;
+  fetch_error: string | null;
 };
 
 export type LeadInput = {
@@ -78,8 +91,10 @@ export type LeadInput = {
   recent_signal: string | null;
   location: string | null;
   phone: string | null;
+  email: string | null;
   social_links: Record<string, string>;
   website_url: string | null;
+  website_unreachable: string | null;
 };
 
 export type LeadScoreResult = {
