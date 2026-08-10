@@ -21,6 +21,14 @@ Give it a company name and website. In seconds, it gives you back:
 
 The result: what used to take 15-20 minutes of manual research and writing per lead now takes seconds, without losing the personal touch that makes outreach actually work.
 
+### For engineers reviewing this repo
+
+- Full-stack, containerized system: FastAPI + PostgreSQL + ChromaDB (RAG) + n8n + Next.js, orchestrated via Docker Compose
+- Structured LLM outputs (function calling) for reliable, parseable scoring and drafting — not prompt-and-hope
+- Real debugging, not just implementation: found and fixed a self-reinforcing RAG retrieval bug (a lead's own past score was being retrieved as its own calibration example), a scraper-blocking bot-detection issue (missing browser headers), and an enrichment bug misreading customer counts as employee headcount — see [Known Limitations](#known-limitations) for what's still open
+- Tested against real, uncurated companies (not synthetic data) throughout development, including deliberately adversarial cases (unreachable domains, JS-rendered sites, enterprise-scale companies that should be disqualified)
+- CI/CD via GitHub Actions, automated tests with mocked external calls, structured error handling with correct HTTP status codes
+
 ---
 
 
