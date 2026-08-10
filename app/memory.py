@@ -166,9 +166,19 @@ def retrieve_similar_examples(
 
     Excludes stored examples belonging to the same company as `lead` (matched
     on normalized website_url, falling back to company name) so a lead never
-    gets calibrated against its own prior score/draft. Over-fetches from Chroma
-    so that filtering self-matches doesn't shrink the result below n_results
-    when other examples are available.
+    gets calibrated against its own prior score/draft.
+
+    Also de-prioritizes low-confidence examples: a "low confidence" score was
+    the model's own admission that it didn't have enough to go on, so it's
+    weak calibration signal — and sparse leads structurally retrieve other
+    sparse leads, letting a "we don't know" score reinforce itself across
+    unrelated companies. High/medium-confidence examples fill the n_results
+    slots first; low-confidence ones only backfill remaining slots if there
+    aren't enough other examples available.
+
+    Over-fetches from Chroma (queries the whole collection, already sorted by
+    distance) so that filtering self-matches and low-confidence examples
+    doesn't shrink the result below n_results when better examples exist.
 
     Returns a list of dicts with lead fields + score/reason/draft + distance.
     Raises on connection or query failures so callers can return a clear error.
@@ -187,36 +197,45 @@ def retrieve_similar_examples(
     current_website = _normalize_website_url(lead.get("website_url"))
     current_company = _normalize_company_name(lead.get("company"))
 
-    examples: list[dict[str, Any]] = []
     ids = (results.get("ids") or [[]])[0]
     metadatas = (results.get("metadatas") or [[]])[0]
     distances = (results.get("distances") or [[]])[0]
     documents = (results.get("documents") or [[]])[0]
 
+    def to_example(i: int, meta: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": ids[i],
+            "document": documents[i] if i < len(documents) else "",
+            "distance": distances[i] if i < len(distances) else None,
+            "name": meta.get("name"),
+            "company": meta.get("company"),
+            "title": meta.get("title"),
+            "company_size": meta.get("company_size"),
+            "industry": meta.get("industry"),
+            "location": meta.get("location"),
+            "website_url": meta.get("website_url") or None,
+            "score": meta.get("score"),
+            "confidence": meta.get("confidence"),
+            "reason": meta.get("reason"),
+            "drafted_message": meta.get("drafted_message") or None,
+        }
+
+    higher_confidence: list[dict[str, Any]] = []
+    low_confidence: list[dict[str, Any]] = []
+
     for i, doc_id in enumerate(ids):
-        if len(examples) >= n_results:
-            break
         meta = metadatas[i] if i < len(metadatas) else {}
         if _is_same_company(current_website, current_company, meta):
             continue
-        examples.append(
-            {
-                "id": doc_id,
-                "document": documents[i] if i < len(documents) else "",
-                "distance": distances[i] if i < len(distances) else None,
-                "name": meta.get("name"),
-                "company": meta.get("company"),
-                "title": meta.get("title"),
-                "company_size": meta.get("company_size"),
-                "industry": meta.get("industry"),
-                "location": meta.get("location"),
-                "website_url": meta.get("website_url") or None,
-                "score": meta.get("score"),
-                "confidence": meta.get("confidence"),
-                "reason": meta.get("reason"),
-                "drafted_message": meta.get("drafted_message") or None,
-            }
-        )
+        example = to_example(i, meta)
+        if _meta_str(meta.get("confidence")).lower() == "low":
+            low_confidence.append(example)
+        else:
+            higher_confidence.append(example)
+
+    examples = higher_confidence[:n_results]
+    if len(examples) < n_results:
+        examples += low_confidence[: n_results - len(examples)]
     return examples
 
 
