@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any, Optional
 
@@ -71,6 +72,42 @@ def lead_to_embed_text(lead: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+def _normalize_website_url(url: Optional[str]) -> Optional[str]:
+    """Lowercase, strip scheme and trailing slashes so http/https and case
+    variants of the same site compare equal. Returns None for empty input."""
+    if not url:
+        return None
+    normalized = url.strip().lower()
+    normalized = re.sub(r"^https?://", "", normalized)
+    normalized = normalized.rstrip("/")
+    return normalized or None
+
+
+def _normalize_company_name(name: Optional[str]) -> Optional[str]:
+    if not name:
+        return None
+    normalized = name.strip().lower()
+    return normalized or None
+
+
+def _is_same_company(
+    current_website: Optional[str],
+    current_company: Optional[str],
+    meta: dict[str, Any],
+) -> bool:
+    """
+    True if a stored example belongs to the same company as the lead being
+    scored. website_url is the primary identifier (normalized); falls back
+    to company name only when website_url is missing on either side.
+    """
+    stored_website = _normalize_website_url(meta.get("website_url"))
+    if current_website and stored_website:
+        return current_website == stored_website
+
+    stored_company = _normalize_company_name(meta.get("company"))
+    return current_company is not None and current_company == stored_company
+
+
 def _meta_str(value: Any) -> str:
     """Chroma metadata values cannot be None — coerce to string."""
     if value is None:
@@ -105,6 +142,7 @@ def store_lead_example(
         "company_size": _meta_str(lead.get("company_size")),
         "industry": _meta_str(lead.get("industry")),
         "location": _meta_str(lead.get("location")),
+        "website_url": _meta_str(lead.get("website_url")),
         "score": int(score),
         "confidence": _meta_str(confidence),
         "reason": _meta_str(reason),
@@ -126,19 +164,28 @@ def retrieve_similar_examples(
     """
     Find the most similar past leads for a new lead.
 
+    Excludes stored examples belonging to the same company as `lead` (matched
+    on normalized website_url, falling back to company name) so a lead never
+    gets calibrated against its own prior score/draft. Over-fetches from Chroma
+    so that filtering self-matches doesn't shrink the result below n_results
+    when other examples are available.
+
     Returns a list of dicts with lead fields + score/reason/draft + distance.
     Raises on connection or query failures so callers can return a clear error.
     """
     collection = get_collection()
-    if collection.count() == 0:
+    total = collection.count()
+    if total == 0:
         return []
 
-    n = min(n_results, collection.count())
     results = collection.query(
         query_texts=[lead_to_embed_text(lead)],
-        n_results=n,
+        n_results=total,
         include=["documents", "metadatas", "distances"],
     )
+
+    current_website = _normalize_website_url(lead.get("website_url"))
+    current_company = _normalize_company_name(lead.get("company"))
 
     examples: list[dict[str, Any]] = []
     ids = (results.get("ids") or [[]])[0]
@@ -147,7 +194,11 @@ def retrieve_similar_examples(
     documents = (results.get("documents") or [[]])[0]
 
     for i, doc_id in enumerate(ids):
+        if len(examples) >= n_results:
+            break
         meta = metadatas[i] if i < len(metadatas) else {}
+        if _is_same_company(current_website, current_company, meta):
+            continue
         examples.append(
             {
                 "id": doc_id,
@@ -159,6 +210,7 @@ def retrieve_similar_examples(
                 "company_size": meta.get("company_size"),
                 "industry": meta.get("industry"),
                 "location": meta.get("location"),
+                "website_url": meta.get("website_url") or None,
                 "score": meta.get("score"),
                 "confidence": meta.get("confidence"),
                 "reason": meta.get("reason"),

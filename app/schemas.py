@@ -72,6 +72,7 @@ class LeadData(BaseModel):
     has_dedicated_sales_role: Optional[bool] = None
     recent_signal: Optional[str] = None
     location: Optional[str] = None
+    website_url: Optional[str] = None
 
 
 class LeadScoreResult(BaseModel):
@@ -101,6 +102,7 @@ class DraftRequest(BaseModel):
     has_dedicated_sales_role: Optional[bool] = None
     recent_signal: Optional[str] = None
     location: Optional[str] = None
+    website_url: Optional[str] = None
     score: int = Field(..., ge=1, le=10)
     confidence: Literal["low", "medium", "high"]
     reason: str
