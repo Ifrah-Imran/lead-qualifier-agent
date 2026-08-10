@@ -177,4 +177,4 @@ Not yet built — planned next steps, in rough priority order:
 ## Author
 
 Ifrah Imran — BS Data Science, COMSATS University Islamabad
-[LinkedIn](#) · [GitHub](https://github.com/Ifrah-Imran)
+[LinkedIn](https://www.linkedin.com/in/ifrah-imran-820a80325/) · [GitHub](https://github.com/Ifrah-Imran)
