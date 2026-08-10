@@ -2,7 +2,7 @@
 
 Stop spending 15-20 minutes manually researching every lead. This tool researches, scores, and drafts personalized outreach for you — automatically, with a clear explanation for every decision, and full control before anything goes out.
 
-> 🎥 [Watch the demo](#) — 90 seconds, shows a real lead going from raw company name to a scored, drafted, ready-to-send message
+> 🎥 [Watch the demo on LinkedIn](https://lnkd.in/p/dZxD3_qA) — 90 seconds, shows a real lead going from raw company name to a scored, drafted, ready-to-send message
 
 ---
 
