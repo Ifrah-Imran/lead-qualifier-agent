@@ -72,14 +72,11 @@ The result: what used to take 15-20 minutes of manual research and writing per l
 ## Key Features
 
 - **Explainable scoring** — every score ships with a plain-language reason, not a black-box number
-- **Retrieval-augmented calibration (RAG)** — scoring and drafting reference similar past leads via ChromaDB, with same-company self-reference and low-confidence example exclusion built in to keep calibration honest
-- **Real web scraping with graceful degradation** — distinguishes "site unreachable" from "reached but no data found," rescues thin/JS-rendered pages via meta-description fallback, uses realistic browser headers to avoid bot-blocking
-- **Contact extraction** — pulls email, phone, and social links (via both `<a href>` scanning and JSON-LD `sameAs` parsing) from the same pages already fetched during enrichment
-- **Human-in-the-loop guardrails** — score-threshold gating before drafting, 24-hour per-company rate limiting to prevent duplicate outreach, explicit Approve/Reject workflow
-- **CSV batch upload** — process a whole list of leads from the dashboard, with live per-row progress
-- **Delete / delete-all** — with confirmation safeguards for destructive actions
-- **Automated tests + CI/CD** — pytest suite with mocked external calls, GitHub Actions running tests on every push
-- **Structured error handling** — distinct HTTP status codes (502/503/504) for upstream failures instead of generic crashes
+- **RAG-calibrated scoring & drafting** — references similar past leads via ChromaDB, with safeguards against self-reference and low-confidence contamination
+- **Real web scraping with graceful degradation** — distinguishes "unreachable" from "no data found," rescues thin/JS-rendered pages, avoids bot-blocking
+- **Contact extraction** — pulls email, phone, and social links automatically from the same pages already scraped
+- **Human-in-the-loop guardrails** — score-threshold gating, 24-hour duplicate-outreach prevention, explicit Approve/Reject — nothing sends without you
+- **CSV batch upload + tested + CI/CD** — process leads in bulk, backed by a pytest suite and GitHub Actions
 
 ---
 
@@ -158,9 +155,9 @@ Full interactive documentation, including request/response schemas, is auto-gene
 
 Documented honestly, not hidden:
 
-- **JS-rendered sites** — the scraper reads static HTML; heavily JavaScript-rendered sites (e.g. large SPA-based marketing pages) may return incomplete enrichment. Partially mitigated via meta-description fallback; a full fix would require headless-browser rendering (Playwright), deliberately scoped out for now.
-- **Structural data gaps affect scoring ceiling** — three ICP-relevant fields (LinkedIn activity, monthly lead volume, dedicated sales role) currently have no data source (no UI input, no enrichment source) and default to null for every lead. Since the ICP hard-gates on these, most leads cap around 5-6/10 regardless of otherwise strong fit. Two fixes identified: adding manual input fields for these attributes, or building a real enrichment source for them. Scoped as a next iteration.
-- **RAG calibration is sensitive to input sparsity** — leads with many missing fields can cluster together in vector retrieval. Same-company self-reference exclusion and low-confidence example filtering are implemented to reduce this; full resolution depends on closing the data gap above.
+- **JS-rendered sites** — the scraper reads static HTML, so heavily JavaScript-rendered pages may return incomplete data. Partially mitigated with a meta-description fallback; a full fix needs headless-browser rendering (Playwright).
+- **Scoring ceiling from missing data** — three ICP-relevant fields (LinkedIn activity, lead volume, dedicated sales role) currently have no data source and default to null. Since the ICP hard-gates on these, most leads cap around 5-6/10 even with strong fit otherwise. Fix: add manual input fields or a real enrichment source for these — next on the roadmap.
+- **RAG sensitivity to sparse data** — leads with many missing fields can cluster together in retrieval. Self-reference and low-confidence filtering reduce this; full resolution depends on closing the gap above.
 
 ---
 
